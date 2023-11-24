@@ -1,0 +1,147 @@
+local function webhook ()
+	local ping = GetSave(PingUserCHB.Name)
+	local userID = string.format("<@%s>", GetSave("Discord UserID") )
+	local webhookUrl = GetSave("https://discord.com/api/webhooks/1177053495795396721/Xt-QE-_dntx0EuKT3Eazqv8odBYbRnEHp82JXw8MmuJmg0nlmRDY9e50jIxS9xtyzMrr")
+
+	local newResources = {
+		{name = 'XP', amount = player._stats.player_xp.Value - oldPlayerStats.PlayerXP},
+		{name = 'Gems', amount = player._stats.gem_amount.Value - oldPlayerStats.Gems},
+		{name = 'Gold', amount = player._stats.gold_amount.Value - oldPlayerStats.Gold},
+		{name = 'Summer Pearls', amount = player._stats._resourceSummerPearls.Value - oldPlayerStats.Pearls},
+
+	}
+
+	local newItemsData = getItemsData()
+	local newItemsCount = 0
+	local newItemsTable = {}
+
+	for itemId, itemData in pairs(newItemsData) do
+		if not oldItemsData[itemId] then 
+			if itemData['Rarity'] and itemData.Rarity == 'Secret' and GetSave(PingRareCHB.Name) then ping = true newSecretItemFunc(itemData.Name, itemData.Amount) end
+			newItemsTable[itemData.Name] = itemData.Amount continue
+
+		elseif itemData.Amount <= oldItemsData[itemId].Amount then continue end
+
+		if itemData['Rarity'] and itemData.Rarity == 'Secret' and GetSave(PingRareCHB.Name) then 
+			ping = true 
+			newSecretItemFunc(itemData.Name, itemData.Amount - oldItemsData[itemId].Amount)
+		end
+
+		newItemsTable[itemData.Name] = itemData.Amount - oldItemsData[itemId].Amount
+		newItemsCount += 1
+	end
+
+
+	local result = getMapName(ResultUI.Holder.Title.Text) if string.find(result, 'DEFEAT') and GetSave(PingDefeatCHB.Name) and LevelData._gamemode ~= 'infinite' then ping = true end
+	local newGems = ""
+	local TotalGems = makeComma(player._stats.gem_amount.Value)
+	local TotalGold = makeComma(player._stats.gold_amount.Value)
+	local TotalPearl = makeComma(player._stats._resourceSummerPearls.Value)
+	local BattlePass = ''
+	local reachedTier = 0
+	local reachedTierExp = 0
+	local nextTierExp = "0/50"
+	local myBPexp = 0
+
+	for _, bpModule in ipairs(RS.src.Data.BattlePass:GetChildren()) do
+		if not bpModule:IsA('ModuleScript') then continue end
+		local bpModulereq = require(bpModule)
+
+		if not bpModulereq[battlePassID] then continue end
+
+		myBPexp = ItemInventoryServiceClient['session']['profile_data']['battlepass_data']
+		if myBPexp and myBPexp[battlePassID] and myBPexp[battlePassID].xp then myBPexp = myBPexp[battlePassID].xp else myBPexp = 0 end
+
+
+		for tierNumb, aboutTier in pairs(bpModulereq[battlePassID].tiers) do
+			if aboutTier.xp_required > myBPexp or reachedTierExp > aboutTier.xp_required then continue end
+			reachedTierExp = aboutTier.xp_required
+			reachedTier = tierNumb
+		end
+
+		if bpModulereq[battlePassID].tiers[tostring( tonumber(reachedTier) + 1 )] then
+			nextTierExp = string.format('%s/%s',myBPexp - reachedTierExp, bpModulereq[battlePassID].tiers[tostring( tonumber(reachedTier) + 1 )].xp_required - reachedTierExp)
+		else
+			nextTierExp = 'MAX'
+		end
+
+		BattlePass = string.format('%s [%s]', reachedTier, nextTierExp)
+
+		break
+	end
+
+	local levelAndUser = string.format("**User :** ||%s (@%s)||", player.Name, player.DisplayName)
+	levelAndUser = levelAndUser .. string.format("\n**Level :** %s", string.match(player.PlayerGui.spawn_units.Lives.Main.Desc.Level.Text, "%d+") ) .. string.format(" ||%s||", string.match(player.PlayerGui.spawn_units.Lives.Main.Desc.Level.Text, "[\[].+") )
+	local newItems = ""
+
+	for _, newResourcesTable in ipairs(newResources) do
+		if newResourcesTable.amount <=0 then continue end
+		newItems = newItems .. string.format("+%s %s\n", math.floor(newResourcesTable.amount), newResourcesTable.name)
+	end
+
+	local currentItemCount = 0
+	for itemName, itemAmount in pairs(newItemsTable) do
+		currentItemCount += 1 local comma = "" if currentItemCount ~= newItemsCount then comma = "\n" end
+
+		newItems = newItems .. string.format('+%s (%s)', itemName, itemAmount) .. comma
+
+	end
+
+	if not ping then userID = "" end
+
+	local data = {
+
+		["content"] = contentNewSecretItem .. " " .. userID,
+		["embeds"] = {
+
+			{
+				["title"] = 'Anime Adventures',
+				['color'] = 11513855,
+				["description"] = levelAndUser,
+				['footer'] = {
+					['text'] = string.format("// Made by xeno (%s)", os.date("%X")), 
+				},
+				['fields'] = {
+					{
+						['name'] = "Player Stats",
+						['value'] = string.format( "<:Gems:1148368507029950515> %s\n<:Gold:1148368511463338074> %s\n<:Pearls:1148369019137708193> %s\n:tickets: Tier: %s", TotalGems, TotalGold, TotalPearl, BattlePass),
+						['inline'] = true
+					},
+
+					{
+						['name'] = "Rewards",
+						['value'] = newItems,
+						['inline'] = true
+					},
+
+					{
+						['name'] = "Result",
+						['value'] = result
+					}
+				}
+
+			}
+
+
+
+		}
+	}
+
+	data = HttpService:JSONEncode(data)
+	local headers = {["content-type"] = "application/json"}
+	local request = http_request or request or HttpPost or syn.request or http.request
+	local dataSend = {Url = webhookUrl, Body = data, Method = "POST", Headers = headers}
+	warn("Sending Result Webhook...")
+
+	pcall(function() request(dataSend) end)
+
+end
+task.spawn(function() 
+	pcall(function()
+
+		if queue_on_teleport then
+			
+		end
+
+	end)	
+end)
